@@ -17,7 +17,7 @@ const UserMessage = ({ text }: { text: string }) => {
   return <div className={styles.userMessage}>{text}</div>;
 };
 
-const AssistantMessage = ({ text }: { text: string }) => {
+const AssistantMessage = ({ text }: { text: string }) => {  
   return (
     <div className={styles.assistantMessage}>
       <Markdown>{text}</Markdown>
@@ -58,12 +58,11 @@ type ChatProps = {
 };
 
 const Chat = ({
-  functionCallHandler = () => Promise.resolve(""), // default to return empty string
+  functionCallHandler = () => Promise.resolve(""),
 }: ChatProps) => {
   const [userInput, setUserInput] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<MessageProps[]>([]);
   const [inputDisabled, setInputDisabled] = useState(false);
-  const [threadId, setThreadId] = useState("");
 
   // automatically scroll to bottom of chat
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -74,30 +73,30 @@ const Chat = ({
     scrollToBottom();
   }, [messages]);
 
-  // create a new threadID when chat component created
-  useEffect(() => {
-    const createThread = async () => {
-      const res = await fetch(`/api/assistants/threads`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      setThreadId(data.threadId);
-    };
-    createThread();
-  }, []);
+  const sendMessage = async (text: string) => {
+    // Add the user message to the state immediately
+    const updatedMessages = [...messages, { role: "user", text }];
+    setMessages(updatedMessages);
 
-  const sendMessage = async (text) => {
-    const response = await fetch(
-      `/api/assistants/threads/${threadId}/messages`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          content: text,
-        }),
-      }
-    );
-    const stream = AssistantStream.fromReadableStream(response.body);
-    handleReadableStream(stream);
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama3.2",
+        messages: updatedMessages.map(msg => ({ role: msg.role, content: msg.text })),
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      setMessages(prevMessages => [
+        ...prevMessages,
+        { role: "assistant", text: data.message.content }
+      ]);
+      handleChatCompleted();
+    }
   };
 
   const submitActionResult = async (runId, toolCallOutputs) => {
@@ -118,14 +117,10 @@ const Chat = ({
     handleReadableStream(stream);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim()) return;
     sendMessage(userInput);
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      { role: "user", text: userInput },
-    ]);
     setUserInput("");
     setInputDisabled(true);
     scrollToBottom();
@@ -188,6 +183,10 @@ const Chat = ({
     setInputDisabled(false);
   };
 
+  const handleChatCompleted = () => { 
+    setInputDisabled(false);
+  };
+
   const handleReadableStream = (stream: AssistantStream) => {
     // messages
     stream.on("textCreated", handleTextCreated);
@@ -225,7 +224,7 @@ const Chat = ({
     });
   };
 
-  const appendMessage = (role, text) => {
+  const appendMessage = (role, text) => {    
     setMessages((prevMessages) => [...prevMessages, { role, text }]);
   };
 
