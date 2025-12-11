@@ -84,7 +84,7 @@ const Chat = ({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama3.2",
+        model: "qwen3:8b",
         messages: updatedMessages.map(msg => ({ role: msg.role, content: msg.text })),
       }),
     });
