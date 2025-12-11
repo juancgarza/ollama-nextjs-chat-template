@@ -23,13 +23,17 @@ async function ollamaChat(body: OllamaChatRequest): Promise<OllamaChatResponse> 
   const chatRequest = await fetch('http://localhost:11434/api/chat',
     {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(body)
     }
   )
   
   if (!chatRequest.ok) {
-    console.error('Error chatting with ollama:', await chatRequest.text());
-      return;
+    const errorText = await chatRequest.text();
+    console.error('Error chatting with ollama:', errorText);
+    throw new Error(`Ollama API error: ${errorText}`);
   }
   const response = await chatRequest.json();
   
@@ -52,17 +56,29 @@ export async function POST(request: Request) {
     });
   }
 
-  const chatRequest = await ollamaChat({
-    model: req.model || "llama3",
-    messages: req.messages,
-    stream: false
-  });
+  try {
+    const chatRequest = await ollamaChat({
+      model: req.model || "qwen3-coder:latest",
+      messages: req.messages,
+      stream: false
+    });
 
-  const data = await chatRequest;
+    const data = await chatRequest;
 
-  // Return the full conversation history along with the new response
-  return new Response(JSON.stringify({
-    ...data,
-    conversation: [...req.messages, data.message]
-  }));
+    if (!data || !data.message) {
+      throw new Error("Invalid response from Ollama");
+    }
+
+    // Return the full conversation history along with the new response
+    return new Response(JSON.stringify({
+      ...data,
+      conversation: [...req.messages, data.message]
+    }));
+  } catch (error: any) {
+    console.error('Error in chat route:', error);
+    return new Response(
+      JSON.stringify({ error: error.message || "Failed to chat with Ollama" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
